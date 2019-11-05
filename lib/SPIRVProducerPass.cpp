@@ -4701,12 +4701,23 @@ void SPIRVProducerPass::GenerateInstruction(Instruction &I) {
       uint32_t ImageID = VMap[Image];
       uint32_t SamplerID = VMap[Sampler];
 
-      Ops << MkId(ImageTyID) << MkId(ImageID) << MkId(SamplerID);
+      uint32_t SampleExplicitID = ImageID;
 
-      uint32_t SampledImageID = nextID;
+      auto &sampler_map = getSamplerMap();
+      auto SamplerCall = dyn_cast<CallInst>(Sampler);
+      const size_t index_into_sampler_map = static_cast<size_t>(
+          dyn_cast<ConstantInt>(SamplerCall->getArgOperand(2))->getZExtValue());
+      
+      if (index_into_sampler_map < sampler_map.size() - 1)
+      {
+        Ops << MkId(ImageTyID) << MkId(ImageID) << MkId(SamplerID);
 
-      auto *Inst = new SPIRVInstruction(spv::OpSampledImage, nextID++, Ops);
-      SPIRVInstList.push_back(Inst);
+        uint32_t SampledImageID = nextID;
+        SampleExplicitID = SampledImageID;
+
+        auto *Inst = new SPIRVInstruction(spv::OpSampledImage, nextID++, Ops);
+        SPIRVInstList.push_back(Inst);
+      }
 
       //
       // Generate OpImageSampleExplicitLod.
@@ -4719,7 +4730,7 @@ void SPIRVProducerPass::GenerateInstruction(Instruction &I) {
       //
       Ops.clear();
 
-      Ops << MkId(lookupType(Call->getType())) << MkId(SampledImageID)
+      Ops << MkId(lookupType(Call->getType())) << MkId(SampleExplicitID)
           << MkId(VMap[Coordinate]) << MkNum(spv::ImageOperandsLodMask);
 
       Constant *CstFP0 = ConstantFP::get(Context, APFloat(0.0f));
@@ -4727,7 +4738,7 @@ void SPIRVProducerPass::GenerateInstruction(Instruction &I) {
 
       VMap[&I] = nextID;
 
-      Inst = new SPIRVInstruction(spv::OpImageSampleExplicitLod, nextID++, Ops);
+      auto *Inst = new SPIRVInstruction(spv::OpImageSampleExplicitLod, nextID++, Ops);
       SPIRVInstList.push_back(Inst);
       break;
     }
